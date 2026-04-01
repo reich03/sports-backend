@@ -1,0 +1,292 @@
+const { User } = require('../models');
+const { generateToken } = require('../utils/jwt.util');
+const { generateOTP, generateResetToken } = require('../utils/generators.util');
+const { sendOTPEmail, sendPasswordResetEmail, sendWelcomeEmail } = require('../utils/email.util');
+
+// Register new user
+exports.register = async (req, res, next) => {
+  try {
+    const { email, username, password } = req.body;
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ 
+      where: { 
+        $or: [{ email }, { username }] 
+      } 
+    });
+    
+    if (existingUser) {
+      if (existingUser.email === email) {
+        return res.status(400).json({ 
+          error: { message: 'El email ya está registrado' } 
+        });
+      }
+      return res.status(400).json({ 
+        error: { message: 'El nombre de usuario ya está en uso' } 
+      });
+    }
+    
+    // Generate OTP
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    
+    // Create user
+    const user = await User.create({
+      email,
+      username,
+      password,
+      otp_code: otp,
+      otp_expires: otpExpires
+    });
+    
+    // Send OTP email
+    await sendOTPEmail(email, otp, username);
+    
+    res.status(201).json({
+      message: 'Usuario registrado. Por favor verifica tu email.',
+      data: {
+        email: user.email,
+        username: user.username
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Verify OTP
+exports.verifyOTP = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    
+    const user = await User.findOne({ where: { email } });
+    
+    if (!user) {
+      return res.status(404).json({ 
+        error: { message: 'Usuario no encontrado' } 
+      });
+    }
+    
+    if (user.email_verified) {
+      return res.status(400).json({ 
+        error: { message: 'El email ya está verificado' } 
+      });
+    }
+    
+    if (!user.otp_code || user.otp_code !== otp) {
+      return res.status(400).json({ 
+        error: { message: 'Código OTP inválido' } 
+      });
+    }
+    
+    if (user.otp_expires < new Date()) {
+      return res.status(400).json({ 
+        error: { message: 'El código OTP ha expirado' } 
+      });
+    }
+    
+    // Verify email
+    user.email_verified = true;
+    user.otp_code = null;
+    user.otp_expires = null;
+    await user.save();
+    
+    // Send welcome email
+    await sendWelcomeEmail(user.email, user.username);
+    
+    // Generate token
+    const token = generateToken(user.id);
+    
+    res.json({
+      message: 'Email verificado exitosamente',
+      data: {
+        token,
+        user: user.getPublicProfile()
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Resend OTP
+exports.resendOTP = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    
+    const user = await User.findOne({ where: { email } });
+    
+    if (!user) {
+      return res.status(404).json({ 
+        error: { message: 'Usuario no encontrado' } 
+      });
+    }
+    
+    if (user.email_verified) {
+      return res.status(400).json({ 
+        error: { message: 'El email ya está verificado' } 
+      });
+    }
+    
+    // Generate new OTP
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    
+    user.otp_code = otp;
+    user.otp_expires = otpExpires;
+    await user.save();
+    
+    // Send OTP email
+    await sendOTPEmail(email, otp, user.username);
+    
+    res.json({
+      message: 'Código OTP reenviado'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Login
+exports.login = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    
+    const user = await User.findOne({ where: { email } });
+    
+    if (!user) {
+      return res.status(401).json({ 
+        error: { message: 'Credenciales inválidas' } 
+      });
+    }
+    
+    if (!user.email_verified) {
+      return res.status(403).json({ 
+        error: { message: 'Por favor verifica tu email primero' } 
+      });
+    }
+    
+    const isPasswordValid = await user.comparePassword(password);
+    
+    if (!isPasswordValid) {
+      return res.status(401).json({ 
+        error: { message: 'Credenciales inválidas' } 
+      });
+    }
+    
+    // Update last login
+    user.last_login = new Date();
+    await user.save();
+    
+    // Generate token
+    const token = generateToken(user.id);
+    
+    res.json({
+      message: 'Login exitoso',
+      data: {
+        token,
+        user: user.getPublicProfile()
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Forgot password
+exports.forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    
+    const user = await User.findOne({ where: { email } });
+    
+    if (!user) {
+      // Don't reveal if user exists
+      return res.json({
+        message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña'
+      });
+    }
+    
+    // Generate reset token
+    const resetToken = generateResetToken();
+    const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    
+    user.reset_password_token = resetToken;
+    user.reset_password_expires = resetExpires;
+    await user.save();
+    
+    // Send reset email
+    await sendPasswordResetEmail(email, resetToken, user.username);
+    
+    res.json({
+      message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Reset password
+exports.resetPassword = async (req, res, next) => {
+  try {
+    const { token, password } = req.body;
+    
+    const user = await User.findOne({ 
+      where: { reset_password_token: token } 
+    });
+    
+    if (!user || user.reset_password_expires < new Date()) {
+      return res.status(400).json({ 
+        error: { message: 'Token inválido o expirado' } 
+      });
+    }
+    
+    // Update password
+    user.password = password;
+    user.reset_password_token = null;
+    user.reset_password_expires = null;
+    await user.save();
+    
+    res.json({
+      message: 'Contraseña restablecida exitosamente'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get current user
+exports.getCurrentUser = async (req, res, next) => {
+  try {
+    res.json({
+      data: {
+        user: req.user.getPublicProfile()
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Logout (client-side token removal)
+exports.logout = async (req, res, next) => {
+  try {
+    res.json({
+      message: 'Logout exitoso'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// OAuth callback handler
+exports.oauthCallback = async (req, res, next) => {
+  try {
+    const token = generateToken(req.user.id);
+    
+    // Redirect to frontend with token
+    res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
+  } catch (error) {
+    next(error);
+  }
+};
