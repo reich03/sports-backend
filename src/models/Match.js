@@ -9,7 +9,7 @@ const Match = sequelize.define('Match', {
   },
   league_id: {
     type: DataTypes.UUID,
-    allowNull: false,
+    allowNull: true, // Nullable for friendly matches
     references: {
       model: 'leagues',
       key: 'id'
@@ -20,6 +20,14 @@ const Match = sequelize.define('Match', {
     allowNull: false,
     references: {
       model: 'sports',
+      key: 'id'
+    }
+  },
+  round_id: {
+    type: DataTypes.UUID,
+    allowNull: true, // Nullable for friendly matches or matches without rounds
+    references: {
+      model: 'rounds',
       key: 'id'
     }
   },

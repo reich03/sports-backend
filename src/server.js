@@ -21,6 +21,7 @@ const predictionRoutes = require('./routes/prediction.routes');
 const groupRoutes = require('./routes/group.routes');
 const rankingRoutes = require('./routes/ranking.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const roundRoutes = require('./routes/round.routes');
 
 const app = express();
 
@@ -31,10 +32,13 @@ app.use(cors({
   credentials: true
 }));
 app.use(morgan('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' })); // Aumentar límite para requests JSON
+app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Aumentar límite para URL encoded
 app.use(cookieParser());
 app.use(passport.initialize());
+
+// Servir archivos estáticos (avatares de usuarios)
+app.use('/uploads', express.static('uploads'));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -47,6 +51,7 @@ app.use('/api/predictions', predictionRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/rankings', rankingRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/rounds', roundRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -118,7 +123,7 @@ const startServer = async () => {
 ║                                                ║
 ║   🌐 Access URLs:                              ║
 ║   • Local:    http://localhost:${PORT}         ║
-║   • Network:  http://192.168.0.6:${PORT}       ║
+║   • Network:  http://192.168.1.10:${PORT}       ║
 ╚════════════════════════════════════════════════╝
       `);
     });

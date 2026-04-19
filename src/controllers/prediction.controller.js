@@ -1,10 +1,16 @@
-const { Prediction, Match, User, Sport } = require('../models');
+const { Prediction, Match, User, Sport, Team, Round, League } = require('../models');
 const { Op } = require('sequelize');
 
 // Create prediction
 exports.createPrediction = async (req, res, next) => {
   try {
-    const { match_id, home_score, away_score, prediction_data } = req.body;
+    const { match_id, prediction_data } = req.body;
+    
+    if (!prediction_data) {
+      return res.status(400).json({ 
+        error: { message: 'prediction_data es requerido' } 
+      });
+    }
     
     const match = await Match.findByPk(match_id);
     
@@ -38,8 +44,6 @@ exports.createPrediction = async (req, res, next) => {
     const prediction = await Prediction.create({
       user_id: req.user.id,
       match_id,
-      home_score,
-      away_score,
       prediction_data
     });
     
@@ -63,8 +67,13 @@ exports.getMyPredictions = async (req, res, next) => {
     
     const where = { user_id: req.user.id };
     
-    const includeWhere = {};
-    if (status) includeWhere.status = status;
+    // Filter by is_processed
+    if (status === 'pending') {
+      where.is_processed = false;
+    } else if (status === 'processed') {
+      where.is_processed = true;
+    }
+    // If status is undefined or 'all', don't add filter
     
     const { count, rows: predictions } = await Prediction.findAndCountAll({
       where,
@@ -72,8 +81,30 @@ exports.getMyPredictions = async (req, res, next) => {
         {
           model: Match,
           as: 'match',
-          where: includeWhere,
-          include: ['home_team', 'away_team', 'league', 'sport']
+          include: [
+            {
+              model: Team,
+              as: 'home_team'
+            },
+            {
+              model: Team,
+              as: 'away_team'
+            },
+            {
+              model: Sport,
+              as: 'sport'
+            },
+            {
+              model: Round,
+              as: 'roundInfo',
+              include: [
+                {
+                  model: League,
+                  as: 'league'
+                }
+              ]
+            }
+          ]
         }
       ],
       order: [[{ model: Match, as: 'match' }, 'match_date', 'DESC']],

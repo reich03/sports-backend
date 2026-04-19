@@ -40,6 +40,10 @@ const Prediction = sequelize.define('Prediction', {
   is_correct: {
     type: DataTypes.BOOLEAN,
     allowNull: true
+  },
+  is_processed: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   }
 }, {
   tableName: 'predictions',

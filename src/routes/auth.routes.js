@@ -28,8 +28,14 @@ const forgotPasswordValidation = [
 ];
 
 const resetPasswordValidation = [
-  body('token').notEmpty().withMessage('Token es requerido'),
+  body('email').isEmail().normalizeEmail().withMessage('Email inválido'),
+  body('otp').isLength({ min: 6, max: 6 }).withMessage('Código OTP inválido'),
   body('password').isLength({ min: 8 }).withMessage('La contraseña debe tener al menos 8 caracteres')
+];
+
+const changePasswordValidation = [
+  body('currentPassword').notEmpty().withMessage('La contraseña actual es requerida'),
+  body('newPassword').isLength({ min: 8 }).withMessage('La nueva contraseña debe tener al menos 8 caracteres')
 ];
 
 // Routes
@@ -39,6 +45,7 @@ router.post('/verify-otp', verifyOTPValidation, validate, authController.verifyO
 router.post('/resend-otp', forgotPasswordValidation, validate, authController.resendOTP);
 router.post('/forgot-password', forgotPasswordValidation, validate, authController.forgotPassword);
 router.post('/reset-password', resetPasswordValidation, validate, authController.resetPassword);
+router.post('/change-password', authenticateJWT, changePasswordValidation, validate, authController.changePassword);
 router.get('/me', authenticateJWT, authController.getCurrentUser);
 router.post('/logout', authenticateJWT, authController.logout);
 

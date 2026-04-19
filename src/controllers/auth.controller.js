@@ -1,4 +1,5 @@
 const { User } = require('../models');
+const { Op } = require('sequelize');
 const { generateToken } = require('../utils/jwt.util');
 const { generateOTP, generateResetToken } = require('../utils/generators.util');
 const { sendOTPEmail, sendPasswordResetEmail, sendWelcomeEmail } = require('../utils/email.util');
@@ -11,7 +12,7 @@ exports.register = async (req, res, next) => {
     // Check if user already exists
     const existingUser = await User.findOne({ 
       where: { 
-        $or: [{ email }, { username }] 
+        [Op.or]: [{ email }, { username }] 
       } 
     });
     
@@ -203,23 +204,23 @@ exports.forgotPassword = async (req, res, next) => {
     if (!user) {
       // Don't reveal if user exists
       return res.json({
-        message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña'
+        message: 'Si el email existe, recibirás un código para restablecer tu contraseña'
       });
     }
     
-    // Generate reset token
-    const resetToken = generateResetToken();
-    const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    // Generate OTP for password reset
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
     
-    user.reset_password_token = resetToken;
-    user.reset_password_expires = resetExpires;
+    user.otp_code = otp;
+    user.otp_expires = otpExpires;
     await user.save();
     
-    // Send reset email
-    await sendPasswordResetEmail(email, resetToken, user.username);
+    // Send reset email with OTP
+    await sendPasswordResetEmail(email, otp, user.username);
     
     res.json({
-      message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña'
+      message: 'Si el email existe, recibirás un código para restablecer tu contraseña'
     });
   } catch (error) {
     next(error);
@@ -229,22 +230,32 @@ exports.forgotPassword = async (req, res, next) => {
 // Reset password
 exports.resetPassword = async (req, res, next) => {
   try {
-    const { token, password } = req.body;
+    const { email, otp, password } = req.body;
     
-    const user = await User.findOne({ 
-      where: { reset_password_token: token } 
-    });
+    const user = await User.findOne({ where: { email } });
     
-    if (!user || user.reset_password_expires < new Date()) {
+    if (!user) {
+      return res.status(404).json({ 
+        error: { message: 'Usuario no encontrado' } 
+      });
+    }
+    
+    if (!user.otp_code || user.otp_code !== otp) {
       return res.status(400).json({ 
-        error: { message: 'Token inválido o expirado' } 
+        error: { message: 'Código OTP inválido' } 
+      });
+    }
+    
+    if (user.otp_expires < new Date()) {
+      return res.status(400).json({ 
+        error: { message: 'El código OTP ha expirado' } 
       });
     }
     
     // Update password
     user.password = password;
-    user.reset_password_token = null;
-    user.reset_password_expires = null;
+    user.otp_code = null;
+    user.otp_expires = null;
     await user.save();
     
     res.json({
@@ -262,6 +273,41 @@ exports.getCurrentUser = async (req, res, next) => {
       data: {
         user: req.user.getPublicProfile()
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Change password (for authenticated users)
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    // Get user with password
+    const user = await User.findByPk(userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        error: { message: 'Usuario no encontrado' }
+      });
+    }
+
+    // Verify current password
+    const isValidPassword = await user.comparePassword(currentPassword);
+    if (!isValidPassword) {
+      return res.status(401).json({
+        error: { message: 'La contraseña actual es incorrecta' }
+      });
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    res.json({
+      message: 'Contraseña actualizada exitosamente'
     });
   } catch (error) {
     next(error);

@@ -70,11 +70,28 @@ CREATE TABLE IF NOT EXISTS teams (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Rounds/Jornadas Table (Dynamic tournament structure)
+CREATE TABLE IF NOT EXISTS rounds (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    league_id UUID REFERENCES leagues(id) ON DELETE CASCADE,
+    sport_id UUID NOT NULL REFERENCES sports(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    round_type VARCHAR(50) DEFAULT 'regular' CHECK (round_type IN ('regular', 'group_stage', 'round_of_32', 'round_of_16', 'quarterfinal', 'semifinal', 'final', 'friendly')),
+    round_number INTEGER,
+    start_date TIMESTAMP,
+    end_date TIMESTAMP,
+    is_active BOOLEAN DEFAULT true,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Matches Table
 CREATE TABLE IF NOT EXISTS matches (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     league_id UUID REFERENCES leagues(id) ON DELETE CASCADE,
     sport_id UUID REFERENCES sports(id) ON DELETE CASCADE,
+    round_id UUID REFERENCES rounds(id) ON DELETE SET NULL,
     home_team_id UUID REFERENCES teams(id) ON DELETE SET NULL,
     away_team_id UUID REFERENCES teams(id) ON DELETE SET NULL,
     match_date TIMESTAMP NOT NULL,
@@ -99,9 +116,32 @@ CREATE TABLE IF NOT EXISTS predictions (
     prediction_data JSONB NOT NULL,
     points_earned INTEGER DEFAULT 0,
     is_correct BOOLEAN,
+    is_processed BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, match_id)
+);
+
+-- League Standings Table (for table positions)
+CREATE TABLE IF NOT EXISTS league_standings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    league_id UUID NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    round_id UUID REFERENCES rounds(id) ON DELETE CASCADE,
+    position INTEGER,
+    played INTEGER DEFAULT 0,
+    won INTEGER DEFAULT 0,
+    drawn INTEGER DEFAULT 0,
+    lost INTEGER DEFAULT 0,
+    goals_for INTEGER DEFAULT 0,
+    goals_against INTEGER DEFAULT 0,
+    goal_difference INTEGER DEFAULT 0,
+    points INTEGER DEFAULT 0,
+    form VARCHAR(20),
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(league_id, team_id, round_id)
 );
 
 -- Groups Table
@@ -162,10 +202,22 @@ CREATE INDEX IF NOT EXISTS idx_matches_date ON matches(match_date);
 CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
 CREATE INDEX IF NOT EXISTS idx_matches_league ON matches(league_id);
 CREATE INDEX IF NOT EXISTS idx_matches_sport ON matches(sport_id);
+CREATE INDEX IF NOT EXISTS idx_matches_round ON matches(round_id);
+
+CREATE INDEX IF NOT EXISTS idx_rounds_league ON rounds(league_id);
+CREATE INDEX IF NOT EXISTS idx_rounds_sport ON rounds(sport_id);
+CREATE INDEX IF NOT EXISTS idx_rounds_type ON rounds(round_type);
+CREATE INDEX IF NOT EXISTS idx_rounds_number ON rounds(round_number);
 
 CREATE INDEX IF NOT EXISTS idx_predictions_user ON predictions(user_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_user_match ON predictions(user_id, match_id);
+CREATE INDEX IF NOT EXISTS idx_predictions_processed ON predictions(is_processed);
+
+CREATE INDEX IF NOT EXISTS idx_standings_league ON league_standings(league_id);
+CREATE INDEX IF NOT EXISTS idx_standings_team ON league_standings(team_id);
+CREATE INDEX IF NOT EXISTS idx_standings_round ON league_standings(round_id);
+CREATE INDEX IF NOT EXISTS idx_standings_position ON league_standings(league_id, position);
 
 CREATE INDEX IF NOT EXISTS idx_groups_code ON groups(code);
 CREATE INDEX IF NOT EXISTS idx_groups_owner ON groups(owner_id);

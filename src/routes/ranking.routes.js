@@ -5,7 +5,8 @@ const { authenticateJWT } = require('../middlewares/auth.middleware');
 
 // Ranking routes
 router.get('/global', authenticateJWT, rankingController.getGlobalRanking);
-router.get('/sport/:sportId', authenticateJWT, rankingController.getRankingBySport);
-router.get('/league/:leagueId', authenticateJWT, rankingController.getRankingByLeague);
+router.get('/sport', authenticateJWT, rankingController.getRankingBySport);
+router.get('/league', authenticateJWT, rankingController.getRankingByLeague);
+router.get('/round', authenticateJWT, rankingController.getRankingByRound);
 
 module.exports = router;

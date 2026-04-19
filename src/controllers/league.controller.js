@@ -2,9 +2,18 @@ const { League, Sport } = require('../models');
 
 exports.getAllLeagues = async (req, res, next) => {
   try {
+    const { sport_id } = req.query;
+    const where = {};
+    
+    if (sport_id) {
+      where.sport_id = sport_id;
+      where.is_active = true;
+    }
+    
     const leagues = await League.findAll({ 
-      where: { is_active: true },
-      include: [{ model: Sport, as: 'sport' }]
+      where,
+      include: [{ model: Sport, as: 'sport' }],
+      order: [['createdAt', 'DESC']]
     });
     res.json({ data: { leagues } });
   } catch (error) {

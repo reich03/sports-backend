@@ -10,6 +10,8 @@ const Prediction = require('./Prediction');
 const Group = require('./Group');
 const GroupMember = require('./GroupMember');
 const Notification = require('./Notification');
+const Round = require('./Round');
+const LeagueStanding = require('./LeagueStanding');
 
 // Define associations
 
@@ -22,15 +24,25 @@ Sport.hasMany(Match, { foreignKey: 'sport_id', as: 'matches' });
 League.belongsTo(Sport, { foreignKey: 'sport_id', as: 'sport' });
 League.hasMany(Match, { foreignKey: 'league_id', as: 'matches' });
 League.hasMany(Group, { foreignKey: 'league_id', as: 'groups' });
+League.hasMany(Round, { foreignKey: 'league_id', as: 'rounds' });
+League.hasMany(LeagueStanding, { foreignKey: 'league_id', as: 'standings' });
 
 // Team associations
 Team.belongsTo(Sport, { foreignKey: 'sport_id', as: 'sport' });
 Team.hasMany(Match, { foreignKey: 'home_team_id', as: 'home_matches' });
 Team.hasMany(Match, { foreignKey: 'away_team_id', as: 'away_matches' });
+Team.hasMany(LeagueStanding, { foreignKey: 'team_id', as: 'standings' });
+
+// Round associations
+Round.belongsTo(League, { foreignKey: 'league_id', as: 'league' });
+Round.belongsTo(Sport, { foreignKey: 'sport_id', as: 'sport' });
+Round.hasMany(Match, { foreignKey: 'round_id', as: 'matches' });
+Round.hasMany(LeagueStanding, { foreignKey: 'round_id', as: 'standings' });
 
 // Match associations
 Match.belongsTo(League, { foreignKey: 'league_id', as: 'league' });
 Match.belongsTo(Sport, { foreignKey: 'sport_id', as: 'sport' });
+Match.belongsTo(Round, { foreignKey: 'round_id', as: 'roundInfo' }); // Changed from 'round' to avoid collision
 Match.belongsTo(Team, { foreignKey: 'home_team_id', as: 'home_team' });
 Match.belongsTo(Team, { foreignKey: 'away_team_id', as: 'away_team' });
 Match.hasMany(Prediction, { foreignKey: 'match_id', as: 'predictions' });
@@ -60,6 +72,11 @@ GroupMember.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 // Notification associations
 Notification.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// LeagueStanding associations
+LeagueStanding.belongsTo(League, { foreignKey: 'league_id', as: 'league' });
+LeagueStanding.belongsTo(Team, { foreignKey: 'team_id', as: 'team' });
+LeagueStanding.belongsTo(Round, { foreignKey: 'round_id', as: 'round' });
+
 module.exports = {
   sequelize,
   User,
@@ -70,5 +87,7 @@ module.exports = {
   Prediction,
   Group,
   GroupMember,
-  Notification
+  Notification,
+  Round,
+  LeagueStanding
 };
