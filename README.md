@@ -1,4 +1,4 @@
-# ProGana Backend API
+# MasterSports Backend API
 
 Backend API para la aplicación de predicciones deportivas ProGana.
 
@@ -11,4 +11,5 @@ Backend API para la aplicación de predicciones deportivas ProGana.
 - Rankings y grupos
 - Panel de administración
 - Notificaciones
+
 
