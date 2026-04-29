@@ -38,7 +38,7 @@ app.use(cookieParser());
 app.use(passport.initialize());
 
 // Servir archivos estáticos (avatares de usuarios)
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(require('path').join(__dirname, '../uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);
