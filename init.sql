@@ -118,8 +118,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     is_correct BOOLEAN,
     is_processed BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, match_id)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- League Standings Table (for table positions)

@@ -1,4 +1,4 @@
-const { Prediction, Match, User, Sport, Team, Round, League } = require('../models');
+const { Prediction, Match, User, Sport, Team, Round, League, Tournament } = require('../models');
 const { Op } = require('sequelize');
 
 // Create prediction
@@ -82,29 +82,21 @@ exports.getMyPredictions = async (req, res, next) => {
           model: Match,
           as: 'match',
           include: [
-            {
-              model: Team,
-              as: 'home_team'
-            },
-            {
-              model: Team,
-              as: 'away_team'
-            },
-            {
-              model: Sport,
-              as: 'sport'
-            },
+            { model: Team, as: 'home_team' },
+            { model: Team, as: 'away_team' },
+            { model: Sport, as: 'sport' },
             {
               model: Round,
               as: 'roundInfo',
-              include: [
-                {
-                  model: League,
-                  as: 'league'
-                }
-              ]
+              include: [{ model: League, as: 'league' }]
             }
           ]
+        },
+        {
+          model: Tournament,
+          as: 'tournament',
+          attributes: ['id', 'name', 'type'],
+          required: false
         }
       ],
       order: [[{ model: Match, as: 'match' }, 'match_date', 'DESC']],

@@ -22,6 +22,7 @@ const groupRoutes = require('./routes/group.routes');
 const rankingRoutes = require('./routes/ranking.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const roundRoutes = require('./routes/round.routes');
+const tournamentRoutes = require('./routes/tournament.routes');
 
 const app = express();
 
@@ -52,6 +53,7 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/rankings', rankingRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/rounds', roundRoutes);
+app.use('/api/tournaments', tournamentRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -23,6 +23,14 @@ const Prediction = sequelize.define('Prediction', {
       key: 'id'
     }
   },
+  tournament_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'tournaments',
+      key: 'id'
+    }
+  },
   prediction_type: {
     type: DataTypes.STRING(50),
     allowNull: true
@@ -50,7 +58,7 @@ const Prediction = sequelize.define('Prediction', {
   indexes: [
     { fields: ['user_id'] },
     { fields: ['match_id'] },
-    { fields: ['user_id', 'match_id'], unique: true }
+    { fields: ['tournament_id'] }
   ]
 });
 

@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: master-sport-db
@@ -15,6 +14,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database_seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+      - ./migrations/add_tournament_tables.sql:/docker-entrypoint-initdb.d/03-tournament-tables.sql
+      - ./world_cup_2026_seed.sql:/docker-entrypoint-initdb.d/04-world-cup-seed.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -23,7 +24,6 @@ services:
     networks:
       - master-sport-network
 
-  # Backend API
   backend:
     build: .
     container_name: master-sport-backend

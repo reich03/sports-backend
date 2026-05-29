@@ -1,7 +1,5 @@
 const { User, Prediction, Match } = require('../models');
 const { Op } = require('sequelize');
-const bcrypt = require('bcryptjs');
-
 // Get all users (admin only)
 exports.getAllUsers = async (req, res, next) => {
   try {
@@ -73,18 +71,15 @@ exports.createUser = async (req, res, next) => {
       }
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create user
+    // Create user — password is hashed by the model's beforeSave hook
     const user = await User.create({
       name: name || email.split('@')[0],
       email,
       username: username || email.split('@')[0],
-      password: hashedPassword,
+      password,           // plain text; beforeSave hook will hash it
       role,
       is_active: isActive,
-      is_verified: true // Admin created users are auto-verified
+      email_verified: true // admin-created users are pre-verified, no OTP needed
     });
 
     res.status(201).json({
