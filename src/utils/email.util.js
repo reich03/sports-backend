@@ -1,5 +1,23 @@
 const nodemailer = require('nodemailer');
 
+const logSMTPConfig = () => {
+  const password = process.env.EMAIL_PASSWORD || '';
+  const maskedPassword =
+    password.length <= 4
+      ? '*'.repeat(password.length)
+      : `${password.slice(0, 2)}${'*'.repeat(Math.max(password.length - 4, 0))}${password.slice(-2)}`;
+
+  console.log('📧 SMTP env en uso:', {
+    host: process.env.EMAIL_HOST || '(vacío)',
+    port: process.env.EMAIL_PORT || '(vacío)',
+    user: process.env.EMAIL_USER || '(vacío)',
+    from: process.env.EMAIL_FROM || '(vacío)',
+    passwordLength: password.length,
+    passwordHasSpaces: /\s/.test(password),
+    passwordPreview: maskedPassword,
+  });
+};
+
 // Create transporter
 const createTransporter = () => {
   // Si no hay configuración de email, retornar null (modo desarrollo)
@@ -7,15 +25,17 @@ const createTransporter = () => {
     console.log('⚠️ Email no configurado - Modo desarrollo (no se enviarán correos reales)');
     return null;
   }
-  
+
+  logSMTPConfig();
+
   return nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
+    port: Number(process.env.EMAIL_PORT) || 587,
     secure: false,
     auth: {
       user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD
-    }
+      pass: process.env.EMAIL_PASSWORD,
+    },
   });
 };
 
