@@ -355,10 +355,16 @@ exports.processSpecialPredictions = async (req, res) => {
 // ─── GET /api/tournaments/:id/participants ─────────────────────────
 exports.getParticipants = async (req, res) => {
   try {
+    const { active } = req.query;
+    const where = { tournament_id: req.params.id };
+
+    if (active === 'true') where.is_active = true;
+    else if (active === 'false') where.is_active = false;
+
     const participants = await TournamentParticipant.findAll({
-      where: { tournament_id: req.params.id },
+      where,
       include: [{ model: User, as: 'user', attributes: ['id', 'username', 'avatar', 'email'] }],
-      order: [['joined_at', 'DESC']]
+      order: [['is_active', 'DESC'], ['joined_at', 'DESC']]
     });
     res.json({ success: true, data: participants });
   } catch (err) {
