@@ -1,10 +1,21 @@
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const TournamentService = require('../services/tournament.service');
+const ScoringService = require('../services/scoring.service');
 const {
   Tournament, TournamentParticipant, TournamentSpecialPrediction,
   Prediction, Match, Team, User, Round, League, Notification
 } = require('../models');
+
+// ─── GET /api/tournaments/admin/all ───────────────────────────────
+exports.listTournamentsAdmin = async (req, res) => {
+  try {
+    const tournaments = await TournamentService.listTournamentsForAdmin();
+    res.json({ success: true, data: tournaments });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
 
 // ─── GET /api/tournaments ─────────────────────────────────────────
 exports.listTournaments = async (req, res) => {
@@ -179,6 +190,9 @@ exports.saveSpecialPrediction = async (req, res) => {
 
     const tournament = await Tournament.findByPk(tournamentId);
     if (!tournament) return res.status(404).json({ success: false, message: 'Torneo no encontrado' });
+    if (!tournament.special_predictions_enabled) {
+      return res.status(400).json({ success: false, message: 'Este torneo no tiene menciones especiales' });
+    }
     if (tournament.special_predictions_locked) {
       return res.status(400).json({ success: false, message: 'Las menciones especiales están cerradas' });
     }
@@ -192,6 +206,15 @@ exports.saveSpecialPrediction = async (req, res) => {
     const ids = [champion_team_id, runner_up_team_id, third_place_team_id].filter(Boolean);
     if (new Set(ids).size !== ids.length) {
       return res.status(400).json({ success: false, message: 'No puedes seleccionar el mismo equipo para dos posiciones' });
+    }
+
+    const tournamentTeams = await TournamentService.getTournamentTeams(tournamentId);
+    const validIds = new Set(tournamentTeams.map((t) => t.id));
+    if (!ids.every((id) => validIds.has(id))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Solo puedes elegir equipos que participan en los partidos de este torneo',
+      });
     }
 
     const [sp, created] = await TournamentSpecialPrediction.findOrCreate({
@@ -242,10 +265,24 @@ exports.getGroups = async (req, res) => {
   }
 };
 
+// ─── GET /api/tournaments/:id/teams ───────────────────────────────
+exports.getTournamentTeams = async (req, res) => {
+  try {
+    const teams = await TournamentService.getTournamentTeams(req.params.id);
+    res.json({ success: true, data: teams });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // ─── ADMIN: POST /api/tournaments ─────────────────────────────────
 exports.createTournament = async (req, res) => {
   try {
-    const { name, description, league_id, type, start_date, end_date, max_participants, champion_points, runner_up_points, third_place_points } = req.body;
+    const {
+      name, description, league_id, type, start_date, end_date, max_participants,
+      champion_points, runner_up_points, third_place_points,
+      special_predictions_enabled, scoring_rules, image
+    } = req.body;
 
     let access_code = null;
     if (type === 'private') {
@@ -253,16 +290,48 @@ exports.createTournament = async (req, res) => {
         Math.random().toString(36).substring(2, 8).toUpperCase();
     }
 
+    const specialsEnabled = special_predictions_enabled !== false;
+
     const tournament = await Tournament.create({
       name, description, league_id, type, access_code,
       start_date, end_date, max_participants,
-      champion_points: champion_points || 45,
-      runner_up_points: runner_up_points || 35,
-      third_place_points: third_place_points || 25,
+      champion_points: specialsEnabled ? (champion_points ?? 45) : 0,
+      runner_up_points: specialsEnabled ? (runner_up_points ?? 35) : 0,
+      third_place_points: specialsEnabled ? (third_place_points ?? 25) : 0,
+      special_predictions_enabled: specialsEnabled,
+      scoring_rules: scoring_rules || ScoringService.getDefaultScoreRules(),
+      image: image || null,
       created_by: req.user.id
     });
 
     res.status(201).json({ success: true, data: tournament });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ─── ADMIN: PUT /api/tournaments/:id ──────────────────────────────
+exports.updateTournament = async (req, res) => {
+  try {
+    const tournament = await Tournament.findByPk(req.params.id);
+    if (!tournament) return res.status(404).json({ success: false, message: 'Torneo no encontrado' });
+
+    const allowed = [
+      'name', 'description', 'league_id', 'type', 'start_date', 'end_date',
+      'max_participants', 'champion_points', 'runner_up_points', 'third_place_points',
+      'special_predictions_enabled', 'scoring_rules', 'image', 'access_code'
+    ];
+
+    const updates = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
+
+    if (updates.type === 'public') updates.access_code = null;
+    if (updates.access_code) updates.access_code = updates.access_code.toUpperCase();
+
+    await tournament.update(updates);
+    res.json({ success: true, data: tournament });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -343,10 +412,81 @@ exports.processSpecialPredictions = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Se requieren los tres equipos finalistas' });
     }
 
+    const tournament = await Tournament.findByPk(req.params.id);
+    if (!tournament) return res.status(404).json({ success: false, message: 'Torneo no encontrado' });
+    if (!tournament.special_predictions_enabled) {
+      return res.status(400).json({ success: false, message: 'Este torneo no tiene menciones especiales' });
+    }
+
     const result = await TournamentService.processSpecialPredictions(
       req.params.id, champion_team_id, runner_up_team_id, third_place_team_id
     );
     res.json({ success: true, message: `${result.processed} menciones especiales procesadas`, data: result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ─── ADMIN: POST /api/tournaments/:id/banner ──────────────────────
+exports.uploadTournamentBanner = async (req, res) => {
+  try {
+    const tournament = await Tournament.findByPk(req.params.id);
+    if (!tournament) {
+      return res.status(404).json({ success: false, message: 'Torneo no encontrado' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No se ha proporcionado ninguna imagen' });
+    }
+
+    if (tournament.image && tournament.image.includes('/uploads/tournaments/')) {
+      const fs = require('fs');
+      const path = require('path');
+      const oldImagePath = path.join(__dirname, '../../', tournament.image);
+      if (fs.existsSync(oldImagePath)) {
+        fs.unlinkSync(oldImagePath);
+      }
+    }
+
+    const imageUrl = `/uploads/tournaments/${req.file.filename}`;
+    tournament.image = imageUrl;
+    await tournament.save();
+
+    res.json({
+      success: true,
+      message: 'Banner actualizado exitosamente',
+      data: { image: imageUrl, tournament }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ─── ADMIN: DELETE /api/tournaments/:id/banner ──────────────────────
+exports.deleteTournamentBanner = async (req, res) => {
+  try {
+    const tournament = await Tournament.findByPk(req.params.id);
+    if (!tournament) {
+      return res.status(404).json({ success: false, message: 'Torneo no encontrado' });
+    }
+
+    if (tournament.image && tournament.image.includes('/uploads/tournaments/')) {
+      const fs = require('fs');
+      const path = require('path');
+      const imagePath = path.join(__dirname, '../../', tournament.image);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+
+    tournament.image = null;
+    await tournament.save();
+
+    res.json({
+      success: true,
+      message: 'Banner eliminado exitosamente',
+      data: { tournament }
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -393,7 +533,7 @@ exports.getMyPredictions = async (req, res) => {
 
     const matchIds = matches.map(m => m.id);
     const predictions = await Prediction.findAll({
-      where: { user_id: req.user.id, match_id: { [Op.in]: matchIds } }
+      where: { user_id: req.user.id, match_id: { [Op.in]: matchIds }, tournament_id: tournamentId }
     });
     const predMap = {};
     predictions.forEach(p => { predMap[p.match_id] = p; });

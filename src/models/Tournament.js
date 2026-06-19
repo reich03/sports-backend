@@ -54,17 +54,21 @@ const Tournament = sequelize.define('Tournament', {
     type: DataTypes.INTEGER,
     defaultValue: 25
   },
-  // Reglas de puntos para partidos
+  // Reglas de puntos para partidos (MASTERSPORTS)
   scoring_rules: {
     type: DataTypes.JSONB,
     defaultValue: {
-      exact_score: 10,      // Resultado exacto completo
-      correct_winner: 5,    // Solo ganador/empate correcto
-      correct_draw: 5,      // Empate correcto
-      home_goal_bonus: 2,   // +2 si acertó goles local (ganador correcto)
-      away_goal_bonus: 2,   // +2 si acertó goles visitante (ganador correcto)
-      strict_winner: true   // Sin bonus de goles si ganador incorrecto
+      exact_score: 10,
+      correct_winner: 5,
+      correct_draw: 5,
+      home_goal_bonus: 2,
+      away_goal_bonus: 2
     }
+  },
+  // Menciones especiales (campeón, sub, tercero) — admin puede desactivar
+  special_predictions_enabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   },
   // Bloquear menciones especiales cuando empieza el torneo
   special_predictions_locked: {

@@ -1,4 +1,4 @@
-const { Match, League, Sport, Team, Prediction, Round, User } = require('../models');
+const { Match, League, Sport, Team, Prediction, Round, User, Tournament } = require('../models');
 const { Op } = require('sequelize');
 
 // Get all matches with filters
@@ -7,6 +7,7 @@ exports.getMatches = async (req, res, next) => {
     const { 
       sport_id, 
       league_id, 
+      round_id,
       status, 
       date_from, 
       date_to,
@@ -19,6 +20,7 @@ exports.getMatches = async (req, res, next) => {
     
     if (sport_id) where.sport_id = sport_id;
     if (league_id) where.league_id = league_id;
+    if (round_id) where.round_id = round_id;
     if (status) where.status = status;
     
     if (date_from || date_to) {
@@ -270,16 +272,72 @@ exports.submitMatchResult = async (req, res, next) => {
     match.predictions_locked = true;
     await match.save();
     
-    // Process predictions for this match
+    // Process general predictions (sin torneo)
     const PredictionService = require('../services/prediction.service');
     const processResult = await PredictionService.processPredictions(matchId);
+
+    // Procesar predicciones de torneos vinculados a la misma liga
+    let tournamentResults = [];
+    if (match.league_id) {
+      const TournamentService = require('../services/tournament.service');
+      const tournaments = await Tournament.findAll({
+        where: { league_id: match.league_id }
+      });
+      for (const t of tournaments) {
+        try {
+          const tResult = await TournamentService.processMatchPredictions(matchId, t.id);
+          tournamentResults.push({ tournament_id: t.id, name: t.name, ...tResult });
+        } catch (err) {
+          tournamentResults.push({ tournament_id: t.id, name: t.name, error: err.message });
+        }
+      }
+    }
     
     res.json({
       message: 'Resultado registrado y predicciones procesadas exitosamente',
       data: { 
         match,
-        predictions_processed: processResult
+        predictions_processed: processResult,
+        tournament_predictions_processed: tournamentResults
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Reprocess predictions for an already-finished match (Admin)
+exports.reprocessMatchPredictions = async (req, res, next) => {
+  try {
+    const { matchId } = req.params;
+    const match = await Match.findByPk(matchId);
+    if (!match) {
+      return res.status(404).json({ error: { message: 'Partido no encontrado' } });
+    }
+    if (match.status !== 'finished' || match.home_score === null || match.away_score === null) {
+      return res.status(400).json({ error: { message: 'El partido debe estar finalizado con marcador' } });
+    }
+
+    const PredictionService = require('../services/prediction.service');
+    const TournamentService = require('../services/tournament.service');
+    const processResult = await PredictionService.processPredictions(matchId);
+
+    let tournamentResults = [];
+    if (match.league_id) {
+      const tournaments = await Tournament.findAll({ where: { league_id: match.league_id } });
+      for (const t of tournaments) {
+        try {
+          const tResult = await TournamentService.processMatchPredictions(matchId, t.id);
+          tournamentResults.push({ tournament_id: t.id, name: t.name, ...tResult });
+        } catch (err) {
+          tournamentResults.push({ tournament_id: t.id, name: t.name, error: err.message });
+        }
+      }
+    }
+
+    res.json({
+      message: 'Predicciones reprocesadas',
+      data: { predictions_processed: processResult, tournament_predictions_processed: tournamentResults }
     });
   } catch (error) {
     next(error);

@@ -1,5 +1,6 @@
 const { User, Prediction, Match } = require('../models');
-const { Op } = require('sequelize');
+const { Op, QueryTypes } = require('sequelize');
+const sequelize = require('../config/database');
 // Get all users (admin only)
 exports.getAllUsers = async (req, res, next) => {
   try {
@@ -181,46 +182,67 @@ exports.getUserProfile = async (req, res, next) => {
 exports.updateUserProfile = async (req, res, next) => {
   try {
     const { userId } = req.params;
-    const { username, email, avatar, bio } = req.body;
-    
+    const { username, email, avatar, bio, password, isActive } = req.body;
+    const requesterIsAdmin = ['admin', 'super_admin'].includes(req.user?.role);
+
     const user = await User.findByPk(userId);
-    
+
     if (!user) {
-      return res.status(404).json({ 
-        error: { message: 'Usuario no encontrado' } 
+      return res.status(404).json({
+        error: { message: 'Usuario no encontrado' },
       });
     }
-    
+
     // Check if username is taken
     if (username && username !== user.username) {
       const existingUser = await User.findOne({ where: { username } });
       if (existingUser) {
-        return res.status(400).json({ 
-          error: { message: 'El nombre de usuario ya está en uso' } 
+        return res.status(400).json({
+          error: { message: 'El nombre de usuario ya está en uso' },
         });
       }
       user.username = username;
     }
-    
+
     // Check if email is taken
     if (email && email !== user.email) {
       const existingEmail = await User.findOne({ where: { email } });
       if (existingEmail) {
-        return res.status(400).json({ 
-          error: { message: 'El email ya está en uso' } 
+        return res.status(400).json({
+          error: { message: 'El email ya está en uso' },
         });
       }
       user.email = email;
     }
-    
+
     if (avatar !== undefined) user.avatar = avatar;
     if (bio !== undefined) user.bio = bio;
-    
+
+    if (requesterIsAdmin) {
+      if (isActive !== undefined) {
+        user.is_active = isActive;
+      }
+
+      if (password && String(password).trim()) {
+        const newPassword = String(password).trim();
+        if (newPassword.length < 8) {
+          return res.status(400).json({
+            error: { message: 'La contraseña debe tener al menos 8 caracteres' },
+          });
+        }
+        user.password = newPassword;
+        user.otp_code = null;
+        user.otp_expires = null;
+        user.reset_token = null;
+        user.reset_expires = null;
+      }
+    }
+
     await user.save();
-    
+
     res.json({
       message: 'Perfil actualizado exitosamente',
-      data: { user: user.getPublicProfile() }
+      data: { user: user.getPublicProfile() },
     });
   } catch (error) {
     next(error);
@@ -268,49 +290,45 @@ exports.getUserPredictions = async (req, res, next) => {
 exports.getUserStats = async (req, res, next) => {
   try {
     const { userId } = req.params;
-    
+
     const user = await User.findByPk(userId);
-    
+
     if (!user) {
-      return res.status(404).json({ 
-        error: { message: 'Usuario no encontrado' } 
+      return res.status(404).json({
+        error: { message: 'Usuario no encontrado' },
       });
     }
-    
-    const totalPredictions = await Prediction.count({
-      where: { user_id: userId }
-    });
-    
-    const processedPredictions = await Prediction.count({
-      where: { user_id: userId, is_processed: true }
-    });
-    
-    const correctPredictions = await Prediction.count({
-      where: { 
-        user_id: userId,
-        is_processed: true,
-        points_earned: { $gt: 0 }
+
+    const [stats] = await sequelize.query(
+      `SELECT
+        COUNT(*)::int AS total_predictions,
+        COUNT(*) FILTER (WHERE is_processed = true)::int AS processed_predictions,
+        COUNT(*) FILTER (WHERE is_correct = true)::int AS correct_predictions,
+        COALESCE(SUM(points_earned), 0)::int AS total_points
+      FROM predictions
+      WHERE user_id = :userId`,
+      {
+        replacements: { userId },
+        type: QueryTypes.SELECT,
       }
-    });
-    
-    const totalPoints = await Prediction.sum('points_earned', {
-      where: { user_id: userId }
-    });
-    
-    const accuracy = processedPredictions > 0 
-      ? ((correctPredictions / processedPredictions) * 100).toFixed(2)
+    );
+
+    const processed = stats?.processed_predictions || 0;
+    const correct = stats?.correct_predictions || 0;
+    const accuracy = processed > 0
+      ? parseFloat(((correct / processed) * 100).toFixed(2))
       : 0;
-    
+
     res.json({
       data: {
         stats: {
-          total_predictions: totalPredictions,
-          processed_predictions: processedPredictions,
-          correct_predictions: correctPredictions,
-          total_points: totalPoints || 0,
-          accuracy: parseFloat(accuracy)
-        }
-      }
+          total_predictions: stats?.total_predictions || 0,
+          processed_predictions: processed,
+          correct_predictions: correct,
+          total_points: stats?.total_points || 0,
+          accuracy,
+        },
+      },
     });
   } catch (error) {
     next(error);

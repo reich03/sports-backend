@@ -16,8 +16,9 @@ const Notification = sequelize.define('Notification', {
     }
   },
   type: {
-    type: DataTypes.ENUM('match_result', 'prediction_points', 'group_invite', 'ranking_update', 'match_reminder', 'system'),
-    allowNull: false
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    defaultValue: 'system'
   },
   title: {
     type: DataTypes.STRING,

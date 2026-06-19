@@ -16,6 +16,8 @@ services:
       - ./database_seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
       - ./migrations/add_tournament_tables.sql:/docker-entrypoint-initdb.d/03-tournament-tables.sql
       - ./world_cup_2026_seed.sql:/docker-entrypoint-initdb.d/04-world-cup-seed.sql
+      - ./migrations/add_special_predictions_enabled.sql:/docker-entrypoint-initdb.d/05-special-predictions-enabled.sql
+      - ./migrations/add_read_at_to_notifications.sql:/docker-entrypoint-initdb.d/06-read-at-notifications.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -51,6 +53,8 @@ services:
     volumes:
       - ./src:/app/src
       - ./package.json:/app/package.json
+      - ./uploads:/app/uploads
+    command: npm run dev
     networks:
       - master-sport-network
     restart: unless-stopped

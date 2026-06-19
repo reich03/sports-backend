@@ -1,5 +1,6 @@
 const { Prediction, User, Match, Notification, Sport } = require('../models');
 const sequelize = require('../config/database');
+const ScoringService = require('./scoring.service');
 
 class PredictionService {
   // Process predictions after match result is submitted
@@ -21,8 +22,9 @@ class PredictionService {
         throw new Error('Match scores must be set before processing predictions');
       }
       
+      // Solo predicciones generales (sin torneo) — las de torneo se procesan por TournamentService
       const predictions = await Prediction.findAll({
-        where: { match_id: matchId, is_processed: false }
+        where: { match_id: matchId, is_processed: false, tournament_id: null }
       });
       
       let processedCount = 0;
@@ -36,10 +38,10 @@ class PredictionService {
         const predictionType = sport?.prediction_type || 'score';
         
         if (predictionType === 'score') {
-          const result = this.calculateScoreBasedPoints(
-            prediction,
+          const result = ScoringService.calculateScorePoints(
+            prediction.prediction_data,
             match,
-            sport?.scoring_rules || {}
+            sport?.scoring_rules || ScoringService.getDefaultScoreRules()
           );
           points = result.points;
           isCorrect = result.isCorrect;
@@ -59,17 +61,17 @@ class PredictionService {
         prediction.is_processed = true;
         await prediction.save({ transaction });
         
-        // Update user stats
+        // Update user stats — siempre sumar puntos ganados
+        if (points > 0) {
+          await User.increment(
+            { total_points: points },
+            { where: { id: prediction.user_id }, transaction }
+          );
+        }
         if (isCorrect) {
           await User.increment(
-            {
-              total_points: points,
-              correct_predictions: 1
-            },
-            {
-              where: { id: prediction.user_id },
-              transaction
-            }
+            { correct_predictions: 1 },
+            { where: { id: prediction.user_id }, transaction }
           );
         }
         
@@ -87,18 +89,22 @@ class PredictionService {
           notificationMessage = `Has ganado ${points} punto(s) en tu predicción.`;
         }
         
-        await Notification.create({
-          user_id: prediction.user_id,
-          type: 'prediction',
-          title: points > 0 ? '¡Predicción procesada!' : 'Predicción procesada',
-          message: notificationMessage,
-          data: {
-            match_id: matchId,
-            prediction_id: prediction.id,
-            points_earned: points,
-            is_correct: isCorrect
-          }
-        }, { transaction });
+        try {
+          await Notification.create({
+            user_id: prediction.user_id,
+            type: 'prediction',
+            title: points > 0 ? '¡Predicción procesada!' : 'Predicción procesada',
+            message: notificationMessage,
+            data: {
+              match_id: matchId,
+              prediction_id: prediction.id,
+              points_earned: points,
+              is_correct: isCorrect
+            }
+          }, { transaction });
+        } catch (notifErr) {
+          console.error('Error creando notificación de predicción:', notifErr.message);
+        }
         
         processedCount++;
       }
@@ -114,90 +120,15 @@ class PredictionService {
     }
   }
   
-  // Calculate points for score-based sports (football, basketball)
+  // Delegado al motor unificado MASTERSPORTS
   static calculateScoreBasedPoints(prediction, match, scoringRules) {
-    let points = 0;
-    let isCorrect = false;
-    
-    const {
-      exact_score = 5,
-      correct_winner = 3,
-      correct_draw = 3,
-      exact_difference = 2,
-      one_score_correct = 1
-    } = scoringRules;
-    
-    const predData = prediction.prediction_data || {};
-    const predHome = predData.home_score;
-    const predAway = predData.away_score;
-    const actualHome = match.home_score;
-    const actualAway = match.away_score;
-    
-    if (predHome === undefined || predAway === undefined) {
-      return { points: 0, isCorrect: false };
-    }
-    
-    // Exact score (máxima puntuación - ya incluye todo)
-    if (predHome === actualHome && predAway === actualAway) {
-      points = exact_score;
-      isCorrect = true;
-    }
-    // No es marcador exacto, evaluar otros casos
-    else {
-      const predResult = predHome > predAway ? 'home' : (predHome < predAway ? 'away' : 'draw');
-      const actualResult = actualHome > actualAway ? 'home' : (actualHome < actualAway ? 'away' : 'draw');
-      
-      // Acertó el resultado (ganador o empate)
-      if (predResult === actualResult) {
-        isCorrect = true;
-        
-        if (actualResult === 'draw') {
-          points = correct_draw;
-        } else {
-          points = correct_winner;
-          
-          // Bonus for exact goal difference
-          const predDiff = Math.abs(predHome - predAway);
-          const actualDiff = Math.abs(actualHome - actualAway);
-          if (predDiff === actualDiff) {
-            points += exact_difference;
-          }
-        }
-        
-        // NUEVO: Además de acertar el resultado, verificar marcadores individuales
-        // Solo si no es marcador exacto (ya manejado arriba)
-        if (predHome === actualHome) {
-          points += one_score_correct;
-        }
-        if (predAway === actualAway) {
-          points += one_score_correct;
-        }
-      }
-      // No acertó el resultado, pero verificar marcadores individuales
-      else {
-        let scoredSomething = false;
-        
-        // Acertó marcador del local
-        if (predHome === actualHome) {
-          points += one_score_correct;
-          scoredSomething = true;
-        }
-        
-        // Acertó marcador del visitante
-        if (predAway === actualAway) {
-          points += one_score_correct;
-          scoredSomething = true;
-        }
-        
-        if (scoredSomething) {
-          isCorrect = true;
-        }
-      }
-    }
-    
-    return { points, isCorrect };
+    return ScoringService.calculateScorePoints(
+      prediction.prediction_data,
+      match,
+      scoringRules
+    );
   }
-  
+
   // Calculate points for position-based sports (F1)
   static calculatePositionBasedPoints(prediction, match, scoringRules) {
     let points = 0;

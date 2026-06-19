@@ -10,6 +10,7 @@ router.get('/upcoming', optionalAuth, matchController.getUpcomingMatches);
 
 // Admin routes - specific routes BEFORE generic :matchId
 router.post('/:matchId/result', authenticateJWT, isAdmin, matchController.submitMatchResult);
+router.post('/:matchId/reprocess', authenticateJWT, isAdmin, matchController.reprocessMatchPredictions);
 router.get('/:matchId/predictions', authenticateJWT, isAdmin, matchController.getMatchPredictions);
 
 // Generic routes

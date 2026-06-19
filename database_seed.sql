@@ -3,8 +3,8 @@
 
 -- Insert Sports
 INSERT INTO sports (name, code, prediction_type, scoring_rules, is_active, "order") VALUES
-('Fútbol', 'football', 'score', '{"exact_score": 5, "correct_winner": 3, "correct_draw": 3, "exact_difference": 2}'::jsonb, true, 1),
-('Baloncesto', 'basketball', 'score', '{"exact_score": 5, "correct_winner": 3, "exact_difference": 2}'::jsonb, true, 2),
+('Fútbol', 'football', 'score', '{"exact_score": 10, "correct_winner": 5, "correct_draw": 5, "home_goal_bonus": 2, "away_goal_bonus": 2}'::jsonb, true, 1),
+('Baloncesto', 'basketball', 'score', '{"exact_score": 10, "correct_winner": 5, "correct_draw": 5, "home_goal_bonus": 2, "away_goal_bonus": 2}'::jsonb, true, 2),
 ('Fórmula 1', 'f1', 'positions', '{"exact_podium": 10, "correct_position": 3, "in_podium": 1, "pole_position": 2}'::jsonb, true, 3)
 ON CONFLICT (code) DO NOTHING;
 

@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
  champion_points INTEGER DEFAULT 45,
  runner_up_points INTEGER DEFAULT 35,
  third_place_points INTEGER DEFAULT 25,
-  scoring_rules JSONB DEFAULT '{"exact_score":10,"correct_winner":5,"correct_draw":5,"home_goal_bonus":2,"away_goal_bonus":2,"strict_winner":true}'::jsonb,
+  scoring_rules JSONB DEFAULT '{"exact_score":10,"correct_winner":5,"correct_draw":5,"home_goal_bonus":2,"away_goal_bonus":2}'::jsonb,
   special_predictions_locked BOOLEAN DEFAULT FALSE,
   image VARCHAR(500),
   created_by UUID NOT NULL REFERENCES users(id),

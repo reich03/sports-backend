@@ -5,6 +5,7 @@ const fs = require('fs');
 // Crear directorio de uploads si no existe
 const avatarDir = path.join(__dirname, '../../uploads/avatars');
 const teamLogoDir = path.join(__dirname, '../../uploads/teams');
+const tournamentBannerDir = path.join(__dirname, '../../uploads/tournaments');
 
 if (!fs.existsSync(avatarDir)) {
   fs.mkdirSync(avatarDir, { recursive: true });
@@ -12,6 +13,10 @@ if (!fs.existsSync(avatarDir)) {
 
 if (!fs.existsSync(teamLogoDir)) {
   fs.mkdirSync(teamLogoDir, { recursive: true });
+}
+
+if (!fs.existsSync(tournamentBannerDir)) {
+  fs.mkdirSync(tournamentBannerDir, { recursive: true });
 }
 
 // Configuración de almacenamiento para avatares
@@ -38,6 +43,19 @@ const teamLogoStorage = multer.diskStorage({
     const teamId = req.params.teamId || 'temp';
     const ext = path.extname(file.originalname);
     const filename = `team-${teamId}-${Date.now()}${ext}`;
+    cb(null, filename);
+  }
+});
+
+// Configuración de almacenamiento para banners de torneos
+const tournamentBannerStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, tournamentBannerDir);
+  },
+  filename: function (req, file, cb) {
+    const tournamentId = req.params.id || 'temp';
+    const ext = path.extname(file.originalname);
+    const filename = `tournament-${tournamentId}-${Date.now()}${ext}`;
     cb(null, filename);
   }
 });
@@ -73,7 +91,17 @@ const uploadTeamLogo = multer({
   fileFilter: fileFilter
 });
 
+// Configuración de multer para banners de torneos
+const uploadTournamentBanner = multer({
+  storage: tournamentBannerStorage,
+  limits: {
+    fileSize: 8 * 1024 * 1024,
+  },
+  fileFilter: fileFilter
+});
+
 module.exports = {
   uploadAvatar,
-  uploadTeamLogo
+  uploadTeamLogo,
+  uploadTournamentBanner
 };

@@ -1,8 +1,9 @@
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
+const ScoringService = require('./scoring.service');
 const {
   Tournament, TournamentParticipant, TournamentSpecialPrediction,
-  Prediction, Match, Team, User, Round, Notification
+  Prediction, Match, Team, User, Round, League, Notification
 } = require('../models');
 
 class TournamentService {
@@ -97,57 +98,9 @@ class TournamentService {
     return matches.map(m => m.toJSON());
   }
 
-  // ─── Calcular puntos según reglas del Mundial ─────────────────
+  // ─── Calcular puntos (motor unificado MASTERSPORTS) ───────────
   static calculateWorldCupPoints(predData, match, scoringRules) {
-    const {
-      exact_score = 10,
-      correct_winner = 5,
-      correct_draw = 5,
-      home_goal_bonus = 2,
-      away_goal_bonus = 2,
-      strict_winner = true
-    } = scoringRules;
-
-    const predHome = predData?.home_score;
-    const predAway = predData?.away_score;
-    const actualHome = match.home_score;
-    const actualAway = match.away_score;
-
-    if (predHome === undefined || predAway === undefined || actualHome === null || actualAway === null) {
-      return { points: 0, isCorrect: false };
-    }
-
-    // Resultado exacto: 10 pts (plano, no 5+2+2)
-    if (predHome === actualHome && predAway === actualAway) {
-      return { points: exact_score, isCorrect: true };
-    }
-
-    const predResult = predHome > predAway ? 'home' : (predHome < predAway ? 'away' : 'draw');
-    const actualResult = actualHome > actualAway ? 'home' : (actualHome < actualAway ? 'away' : 'draw');
-
-    // Ganador/empate correcto
-    if (predResult === actualResult) {
-      let points = actualResult === 'draw' ? correct_draw : correct_winner;
-      let isCorrect = true;
-
-      // Bonus de goles locales (+2 si acertó)
-      if (predHome === actualHome) points += home_goal_bonus;
-      // Bonus de goles visitantes (+2 si acertó)
-      if (predAway === actualAway) points += away_goal_bonus;
-
-      return { points, isCorrect };
-    }
-
-    // Ganador incorrecto - en modo estricto no hay puntos
-    if (strict_winner) {
-      return { points: 0, isCorrect: false };
-    }
-
-    // Modo no estricto: puntos por goles individuales
-    let points = 0;
-    if (predHome === actualHome) points += home_goal_bonus;
-    if (predAway === actualAway) points += away_goal_bonus;
-    return { points, isCorrect: points > 0 };
+    return ScoringService.calculateScorePoints(predData, match, scoringRules);
   }
 
   // ─── Procesar predicciones de un partido del Mundial ─────────
@@ -161,7 +114,7 @@ class TournamentService {
       const tournament = await Tournament.findByPk(tournamentId);
       if (!tournament) throw new Error('Torneo no encontrado');
 
-      const scoringRules = tournament.scoring_rules;
+      const scoringRules = tournament.scoring_rules || ScoringService.getDefaultScoreRules();
 
       // Solo predicciones de participantes activos del torneo
       const participants = await TournamentParticipant.findAll({
@@ -188,25 +141,35 @@ class TournamentService {
         await prediction.save({ transaction });
 
         // Actualizar puntos del participante en el torneo
+        const incrementFields = {
+          total_points: points,
+          match_points: points,
+          total_predictions: 1
+        };
+        if (isCorrect) incrementFields.correct_predictions = 1;
+
         await TournamentParticipant.increment(
-          { total_points: points, match_points: points, total_predictions: 1, correct_predictions: isCorrect ? 1 : 0 },
+          incrementFields,
           { where: { tournament_id: tournamentId, user_id: prediction.user_id }, transaction }
         );
 
-        // Notificación
-        const notifMsg = points === 0
-          ? 'Tu predicción no sumó puntos esta vez.'
-          : points >= 10
-            ? `¡Resultado exacto! Has ganado ${points} puntos en el Mundial.`
-            : `¡Acertaste! Has ganado ${points} puntos en el Mundial.`;
+        try {
+          const notifMsg = points === 0
+            ? 'Tu predicción no sumó puntos esta vez.'
+            : points >= 10
+              ? `¡Resultado exacto! Has ganado ${points} puntos en el torneo.`
+              : `¡Acertaste! Has ganado ${points} puntos en el torneo.`;
 
-        await Notification.create({
-          user_id: prediction.user_id,
-          type: 'match',
-          title: points > 0 ? '¡Puntos del Mundial!' : 'Predicción procesada',
-          message: notifMsg,
-          data: { match_id: matchId, prediction_id: prediction.id, points_earned: points, tournament_id: tournamentId }
-        }, { transaction });
+          await Notification.create({
+            user_id: prediction.user_id,
+            type: 'match',
+            title: points > 0 ? '¡Puntos del torneo!' : 'Predicción procesada',
+            message: notifMsg,
+            data: { match_id: matchId, prediction_id: prediction.id, points_earned: points, tournament_id: tournamentId }
+          }, { transaction });
+        } catch (notifErr) {
+          console.error('Error creando notificación de torneo:', notifErr.message);
+        }
 
         processedCount++;
       }
@@ -230,10 +193,14 @@ class TournamentService {
         where: { tournament_id: tournamentId, is_processed: false }
       });
 
+      if (!tournament.special_predictions_enabled) {
+        throw new Error('Este torneo no tiene menciones especiales habilitadas');
+      }
+
       for (const sp of specials) {
-        let championPts = sp.champion_team_id === championId ? tournament.champion_points : 0;
-        let runnerUpPts = sp.runner_up_team_id === runnerUpId ? tournament.runner_up_points : 0;
-        let thirdPts = sp.third_place_team_id === thirdPlaceId ? tournament.third_place_points : 0;
+        let championPts = sp.champion_team_id === championId ? (tournament.champion_points || 0) : 0;
+        let runnerUpPts = sp.runner_up_team_id === runnerUpId ? (tournament.runner_up_points || 0) : 0;
+        let thirdPts = sp.third_place_team_id === thirdPlaceId ? (tournament.third_place_points || 0) : 0;
         const totalSpecialPts = championPts + runnerUpPts + thirdPts;
 
         await sp.update({
@@ -363,7 +330,58 @@ class TournamentService {
     return result;
   }
 
-  // ─── Listar todos los torneos disponibles ─────────────────────
+  // ─── Equipos participantes del torneo (desde partidos de la liga) ─
+  static async getTournamentTeams(tournamentId) {
+    const tournament = await Tournament.findByPk(tournamentId);
+    if (!tournament) throw new Error('Torneo no encontrado');
+    if (!tournament.league_id) return [];
+
+    const matches = await Match.findAll({
+      where: {
+        league_id: tournament.league_id,
+        status: { [Op.in]: ['scheduled', 'live', 'finished'] },
+      },
+      include: [
+        { model: Team, as: 'home_team', attributes: ['id', 'name', 'short_name', 'logo', 'country'] },
+        { model: Team, as: 'away_team', attributes: ['id', 'name', 'short_name', 'logo', 'country'] },
+      ],
+    });
+
+    const teamMap = new Map();
+    for (const m of matches) {
+      if (m.home_team) teamMap.set(m.home_team.id, m.home_team.toJSON());
+      if (m.away_team) teamMap.set(m.away_team.id, m.away_team.toJSON());
+    }
+
+    return Array.from(teamMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }
+
+  // ─── Listar torneos para admin (todos los estados, con código) ─
+  static async listTournamentsForAdmin() {
+    const tournaments = await Tournament.findAll({
+      include: [
+        { model: User, as: 'creator', attributes: ['id', 'username'] },
+        { model: League, as: 'league', attributes: ['id', 'name'] }
+      ],
+      order: [['created_at', 'DESC']]
+    });
+
+    const ids = tournaments.map(t => t.id);
+    const counts = await TournamentParticipant.findAll({
+      where: { tournament_id: { [Op.in]: ids }, is_active: true },
+      attributes: ['tournament_id', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['tournament_id'],
+      raw: true
+    });
+    const countMap = {};
+    counts.forEach(c => { countMap[c.tournament_id] = parseInt(c.count); });
+
+    return tournaments.map(t => ({
+      ...t.toJSON(),
+      total_participants: countMap[t.id] || 0
+    }));
+  }
+
   static async listTournaments(userId = null) {
     const tournaments = await Tournament.findAll({
       where: { status: { [Op.in]: ['upcoming', 'active'] } },

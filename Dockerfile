@@ -7,8 +7,8 @@ WORKDIR /app
 # Copiar package files
 COPY package*.json ./
 
-# Instalar dependencias
-RUN npm ci --only=production
+# Instalar dependencias (incluye nodemon para desarrollo en Docker)
+RUN npm ci
 
 # Copiar código fuente
 COPY . .
