@@ -20,8 +20,9 @@ exports.createPrediction = async (req, res, next) => {
       });
     }
     
-    // Check if predictions are locked
-    if (match.predictions_locked || (match.lock_date && new Date() > match.lock_date)) {
+    // Check if predictions are locked (cierra al llegar la hora del partido)
+    const matchStarted = match.match_date && new Date() >= new Date(match.match_date);
+    if (match.predictions_locked || matchStarted || (match.status && match.status !== 'scheduled')) {
       return res.status(400).json({ 
         error: { message: 'Las predicciones para este partido ya están cerradas' } 
       });
@@ -182,9 +183,11 @@ exports.updatePrediction = async (req, res, next) => {
       });
     }
     
-    // Check if predictions are locked
-    if (prediction.match.predictions_locked || 
-        (prediction.match.lock_date && new Date() > prediction.match.lock_date)) {
+    // Check if predictions are locked (cierra al llegar la hora del partido)
+    const matchStarted = prediction.match.match_date
+      && new Date() >= new Date(prediction.match.match_date);
+    if (prediction.match.predictions_locked || matchStarted
+        || (prediction.match.status && prediction.match.status !== 'scheduled')) {
       return res.status(400).json({ 
         error: { message: 'Las predicciones para este partido ya están cerradas' } 
       });

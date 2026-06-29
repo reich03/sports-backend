@@ -169,7 +169,7 @@ exports.createMatch = async (req, res, next) => {
       match_date,
       location,
       round,
-      lock_date: new Date(new Date(match_date).getTime() - 15 * 60 * 1000) // Lock 15 min before
+      lock_date: new Date(match_date) // Misma hora del partido (cierre al inicio)
     });
     
     res.status(201).json({
@@ -185,7 +185,14 @@ exports.createMatch = async (req, res, next) => {
 exports.updateMatch = async (req, res, next) => {
   try {
     const { matchId } = req.params;
-    const updates = req.body;
+    const updates = { ...req.body };
+
+    if (updates.round_id === '') updates.round_id = null;
+    if (updates.league_id === '') updates.league_id = null;
+
+    if (updates.match_date) {
+      updates.lock_date = new Date(updates.match_date);
+    }
     
     const match = await Match.findByPk(matchId);
     
