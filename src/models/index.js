@@ -15,6 +15,12 @@ const LeagueStanding = require('./LeagueStanding');
 const Tournament = require('./Tournament');
 const TournamentParticipant = require('./TournamentParticipant');
 const TournamentSpecialPrediction = require('./TournamentSpecialPrediction');
+const TeamLeague = require('./TeamLeague');
+const Driver = require('./Driver');
+const F1Event = require('./F1Event');
+const F1EventDriver = require('./F1EventDriver');
+const F1EventResult = require('./F1EventResult');
+const F1Prediction = require('./F1Prediction');
 
 // ─── Sport associations ───────────────────────────────────────────
 Sport.hasMany(League, { foreignKey: 'sport_id', as: 'leagues' });
@@ -34,6 +40,8 @@ Team.belongsTo(Sport, { foreignKey: 'sport_id', as: 'sport' });
 Team.hasMany(Match, { foreignKey: 'home_team_id', as: 'home_matches' });
 Team.hasMany(Match, { foreignKey: 'away_team_id', as: 'away_matches' });
 Team.hasMany(LeagueStanding, { foreignKey: 'team_id', as: 'standings' });
+Team.belongsToMany(League, { through: TeamLeague, foreignKey: 'team_id', otherKey: 'league_id', as: 'leagues' });
+League.belongsToMany(Team, { through: TeamLeague, foreignKey: 'league_id', otherKey: 'team_id', as: 'teams' });
 Team.hasMany(TournamentSpecialPrediction, { foreignKey: 'champion_team_id', as: 'champion_predictions' });
 Team.hasMany(TournamentSpecialPrediction, { foreignKey: 'runner_up_team_id', as: 'runner_up_predictions' });
 Team.hasMany(TournamentSpecialPrediction, { foreignKey: 'third_place_team_id', as: 'third_place_predictions' });
@@ -106,6 +114,43 @@ TournamentSpecialPrediction.belongsTo(Team, { foreignKey: 'champion_team_id', as
 TournamentSpecialPrediction.belongsTo(Team, { foreignKey: 'runner_up_team_id', as: 'runner_up_team' });
 TournamentSpecialPrediction.belongsTo(Team, { foreignKey: 'third_place_team_id', as: 'third_place_team' });
 
+// ─── F1: Driver associations ──────────────────────────────────────
+Driver.belongsTo(Sport, { foreignKey: 'sport_id', as: 'sport' });
+Driver.belongsTo(Team, { foreignKey: 'team_id', as: 'team' });
+Team.hasMany(Driver, { foreignKey: 'team_id', as: 'drivers' });
+Sport.hasMany(Driver, { foreignKey: 'sport_id', as: 'drivers' });
+
+// ─── F1: Event associations ───────────────────────────────────────
+F1Event.belongsTo(Sport, { foreignKey: 'sport_id', as: 'sport' });
+F1Event.belongsTo(League, { foreignKey: 'league_id', as: 'league' });
+F1Event.belongsTo(Tournament, { foreignKey: 'tournament_id', as: 'tournament' });
+League.hasMany(F1Event, { foreignKey: 'league_id', as: 'f1_events' });
+Tournament.hasMany(F1Event, { foreignKey: 'tournament_id', as: 'f1_events' });
+
+// Parrilla del evento (N:M Event <-> Driver)
+F1Event.belongsToMany(Driver, { through: F1EventDriver, foreignKey: 'event_id', otherKey: 'driver_id', as: 'drivers' });
+Driver.belongsToMany(F1Event, { through: F1EventDriver, foreignKey: 'driver_id', otherKey: 'event_id', as: 'events' });
+F1EventDriver.belongsTo(F1Event, { foreignKey: 'event_id', as: 'event' });
+F1EventDriver.belongsTo(Driver, { foreignKey: 'driver_id', as: 'driver' });
+F1EventDriver.belongsTo(Team, { foreignKey: 'team_id', as: 'team' });
+
+// ─── F1: Result associations ──────────────────────────────────────
+F1Event.hasOne(F1EventResult, { foreignKey: 'event_id', as: 'result' });
+F1EventResult.belongsTo(F1Event, { foreignKey: 'event_id', as: 'event' });
+F1EventResult.belongsTo(Driver, { foreignKey: 'pole_driver_id', as: 'pole_driver' });
+F1EventResult.belongsTo(Driver, { foreignKey: 'fastest_lap_driver_id', as: 'fastest_lap_driver' });
+F1EventResult.belongsTo(Driver, { foreignKey: 'driver_of_the_day_id', as: 'driver_of_the_day' });
+
+// ─── F1: Prediction associations ──────────────────────────────────
+F1Event.hasMany(F1Prediction, { foreignKey: 'event_id', as: 'predictions' });
+F1Prediction.belongsTo(F1Event, { foreignKey: 'event_id', as: 'event' });
+F1Prediction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+F1Prediction.belongsTo(Tournament, { foreignKey: 'tournament_id', as: 'tournament' });
+F1Prediction.belongsTo(Driver, { foreignKey: 'pole_driver_id', as: 'pole_driver' });
+F1Prediction.belongsTo(Driver, { foreignKey: 'fastest_lap_driver_id', as: 'fastest_lap_driver' });
+F1Prediction.belongsTo(Driver, { foreignKey: 'driver_of_the_day_id', as: 'driver_of_the_day' });
+User.hasMany(F1Prediction, { foreignKey: 'user_id', as: 'f1_predictions' });
+
 module.exports = {
   sequelize,
   User,
@@ -121,5 +166,11 @@ module.exports = {
   LeagueStanding,
   Tournament,
   TournamentParticipant,
-  TournamentSpecialPrediction
+  TournamentSpecialPrediction,
+  TeamLeague,
+  Driver,
+  F1Event,
+  F1EventDriver,
+  F1EventResult,
+  F1Prediction
 };

@@ -23,6 +23,8 @@ const rankingRoutes = require('./routes/ranking.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const roundRoutes = require('./routes/round.routes');
 const tournamentRoutes = require('./routes/tournament.routes');
+const driverRoutes = require('./routes/driver.routes');
+const f1EventRoutes = require('./routes/f1event.routes');
 
 const app = express();
 
@@ -54,6 +56,8 @@ app.use('/api/rankings', rankingRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/rounds', roundRoutes);
 app.use('/api/tournaments', tournamentRoutes);
+app.use('/api/drivers', driverRoutes);
+app.use('/api/f1-events', f1EventRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -105,6 +109,63 @@ const startServer = async () => {
       console.log('✅ Database synchronized.');
     } else {
       console.log(`✅ Database already initialized (${tables.length} tables found).`);
+
+      // Auto-migración segura: crear tablas nuevas si no existen, sin tocar las viejas.
+      // Añadir aquí cualquier tabla nueva que se agregue en el tiempo.
+      const {
+        TeamLeague,
+        Driver,
+        F1Event,
+        F1EventDriver,
+        F1EventResult,
+        F1Prediction,
+      } = require('./models');
+
+      const tableName = (t) => (typeof t === 'string' ? t : t.tableName);
+      const has = (name) => tables.some((t) => tableName(t) === name);
+
+      // Definir aquí las tablas nuevas en el orden de dependencia (padres antes que hijas).
+      const newTables = [
+        { name: 'team_leagues', model: TeamLeague },
+        { name: 'drivers', model: Driver },
+        { name: 'f1_events', model: F1Event },
+        { name: 'f1_event_drivers', model: F1EventDriver },
+        { name: 'f1_event_results', model: F1EventResult },
+        { name: 'f1_predictions', model: F1Prediction },
+      ];
+
+      for (const t of newTables) {
+        if (!has(t.name)) {
+          console.log(`📝 Creando tabla nueva: ${t.name}`);
+          // eslint-disable-next-line no-await-in-loop
+          await t.model.sync();
+          console.log(`✅ Tabla ${t.name} creada.`);
+        }
+      }
+
+      // Seed: asegurar el deporte "Formula 1" para reutilizar el sistema de equipos/ligas.
+      try {
+        const { Sport } = require('./models');
+        const existing = await Sport.findOne({ where: { code: 'f1' } });
+        if (!existing) {
+          await Sport.create({
+            name: 'Formula 1',
+            code: 'f1',
+            icon: 'car-sport',
+            prediction_type: 'positions',
+            scoring_rules: {
+              exact_position: 5,
+              top10_hit: 8,
+              podium_hit: 7,
+            },
+            is_active: true,
+            order: 10,
+          });
+          console.log('✅ Deporte "Formula 1" creado.');
+        }
+      } catch (seedErr) {
+        console.warn('⚠️  No se pudo asegurar el deporte F1:', seedErr.message);
+      }
     }
 
     app.listen(PORT, HOST, () => {

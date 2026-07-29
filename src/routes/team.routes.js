@@ -9,6 +9,7 @@ const { uploadTeamLogo } = require('../middlewares/upload.middleware');
 router.get('/', teamController.getAllTeams);
 router.get('/:teamId', teamController.getTeamById);
 router.get('/sport/:sportId', teamController.getTeamsBySport);
+router.get('/league/:leagueId', teamController.getTeamsByLeague);
 
 // Admin routes
 router.post('/', authenticateJWT, isAdmin, teamController.createTeam);

@@ -6,6 +6,8 @@ const fs = require('fs');
 const avatarDir = path.join(__dirname, '../../uploads/avatars');
 const teamLogoDir = path.join(__dirname, '../../uploads/teams');
 const tournamentBannerDir = path.join(__dirname, '../../uploads/tournaments');
+const driverPhotoDir = path.join(__dirname, '../../uploads/drivers');
+const f1EventBannerDir = path.join(__dirname, '../../uploads/f1_events');
 
 if (!fs.existsSync(avatarDir)) {
   fs.mkdirSync(avatarDir, { recursive: true });
@@ -17,6 +19,14 @@ if (!fs.existsSync(teamLogoDir)) {
 
 if (!fs.existsSync(tournamentBannerDir)) {
   fs.mkdirSync(tournamentBannerDir, { recursive: true });
+}
+
+if (!fs.existsSync(driverPhotoDir)) {
+  fs.mkdirSync(driverPhotoDir, { recursive: true });
+}
+
+if (!fs.existsSync(f1EventBannerDir)) {
+  fs.mkdirSync(f1EventBannerDir, { recursive: true });
 }
 
 // Configuración de almacenamiento para avatares
@@ -100,8 +110,46 @@ const uploadTournamentBanner = multer({
   fileFilter: fileFilter
 });
 
+// Almacenamiento para fotos de pilotos
+const driverPhotoStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, driverPhotoDir);
+  },
+  filename: function (req, file, cb) {
+    const driverId = req.params.driverId || 'temp';
+    const ext = path.extname(file.originalname);
+    cb(null, `driver-${driverId}-${Date.now()}${ext}`);
+  }
+});
+
+const uploadDriverPhoto = multer({
+  storage: driverPhotoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: fileFilter,
+});
+
+// Almacenamiento para banners de eventos F1
+const f1EventBannerStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, f1EventBannerDir);
+  },
+  filename: function (req, file, cb) {
+    const eventId = req.params.eventId || 'temp';
+    const ext = path.extname(file.originalname);
+    cb(null, `f1event-${eventId}-${Date.now()}${ext}`);
+  }
+});
+
+const uploadF1EventBanner = multer({
+  storage: f1EventBannerStorage,
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: fileFilter,
+});
+
 module.exports = {
   uploadAvatar,
   uploadTeamLogo,
-  uploadTournamentBanner
+  uploadTournamentBanner,
+  uploadDriverPhoto,
+  uploadF1EventBanner
 };
