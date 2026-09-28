@@ -9,6 +9,9 @@ const { uploadAvatar } = require('../middlewares/upload.middleware');
 router.get('/', authenticateJWT, isAdmin, userController.getAllUsers);
 router.post('/', authenticateJWT, isAdmin, userController.createUser);
 
+// Eliminar la propia cuenta (cualquier usuario autenticado)
+router.delete('/me', authenticateJWT, userController.deleteMyAccount);
+
 // Get user profile
 router.get('/:userId', authenticateJWT, userController.getUserProfile);
 

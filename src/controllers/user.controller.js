@@ -92,10 +92,38 @@ exports.createUser = async (req, res, next) => {
   }
 };
 
-// Delete user (admin only)
+// Eliminar la propia cuenta (cualquier usuario autenticado)
+exports.deleteMyAccount = async (req, res, next) => {
+  try {
+    const user = await User.findByPk(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        error: { message: 'Usuario no encontrado' }
+      });
+    }
+
+    await user.destroy();
+
+    res.json({
+      message: 'Tu cuenta ha sido eliminada exitosamente',
+      data: { userId: req.user.id }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Delete user (admin only — eliminar a otros usuarios)
 exports.deleteUser = async (req, res, next) => {
   try {
     const { userId } = req.params;
+
+    if (req.user.id === userId) {
+      return res.status(400).json({
+        error: { message: 'Para eliminar tu propia cuenta usa DELETE /users/me' }
+      });
+    }
 
     const user = await User.findByPk(userId);
 
@@ -105,8 +133,7 @@ exports.deleteUser = async (req, res, next) => {
       });
     }
 
-    // Prevent deleting admin users
-    if (user.role === 'admin' && req.user.id !== userId) {
+    if (['admin', 'super_admin'].includes(user.role)) {
       return res.status(403).json({
         error: { message: 'No puedes eliminar otros administradores' }
       });
