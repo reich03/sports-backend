@@ -18,6 +18,7 @@ services:
       - ./world_cup_2026_seed.sql:/docker-entrypoint-initdb.d/04-world-cup-seed.sql
       - ./migrations/add_special_predictions_enabled.sql:/docker-entrypoint-initdb.d/05-special-predictions-enabled.sql
       - ./migrations/add_read_at_to_notifications.sql:/docker-entrypoint-initdb.d/06-read-at-notifications.sql
+      - ./migrations/add_f1_pole_lock_date.sql:/docker-entrypoint-initdb.d/07-f1-pole-lock-date.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s

@@ -29,6 +29,11 @@ const F1Event = sequelize.define('F1Event', {
     type: DataTypes.DATE,
     allowNull: false,
   },
+  // Cierre de la predicción de pole (clasificación). Si es null, usa event_date.
+  pole_lock_date: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
   status: {
     type: DataTypes.ENUM('scheduled', 'live', 'finished', 'cancelled'),
     defaultValue: 'scheduled',

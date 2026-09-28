@@ -248,6 +248,16 @@ exports.getEventResult = async (req, res, next) => {
 
 const isMatchTimeReached = (dateVal) => Date.now() >= new Date(dateVal).getTime();
 
+const isRaceLocked = (event) =>
+  !event || isMatchTimeReached(event.event_date) || event.status !== 'scheduled';
+
+const isPoleLocked = (event) => {
+  if (!event) return true;
+  if (event.status !== 'scheduled') return true;
+  const lockDate = event.pole_lock_date || event.event_date;
+  return isMatchTimeReached(lockDate);
+};
+
 exports.getMyPrediction = async (req, res, next) => {
   try {
     const prediction = await F1Prediction.findOne({
@@ -264,42 +274,77 @@ exports.upsertMyPrediction = async (req, res, next) => {
     const event = await F1Event.findByPk(req.params.eventId);
     if (!event) return res.status(404).json({ error: { message: 'Evento no encontrado' } });
 
-    if (isMatchTimeReached(event.event_date) || event.status !== 'scheduled') {
+    const raceLocked = isRaceLocked(event);
+    const poleLocked = isPoleLocked(event);
+
+    if (raceLocked) {
       return res.status(400).json({ error: { message: 'Las predicciones para este evento ya están cerradas' } });
+    }
+
+    const existing = await F1Prediction.findOne({
+      where: { user_id: req.user.id, event_id: event.id },
+    });
+
+    const requestedPole = req.body.pole_driver_id || null;
+    if (poleLocked && requestedPole && existing?.pole_driver_id && requestedPole !== existing.pole_driver_id) {
+      return res.status(400).json({
+        error: { message: 'La predicción de pole position ya está cerrada (clasificación)' },
+      });
+    }
+    if (poleLocked && requestedPole && !existing?.pole_driver_id) {
+      return res.status(400).json({
+        error: { message: 'El plazo para elegir pole position ya cerró. No se pudo guardar.' },
+      });
     }
 
     const payload = {
       user_id: req.user.id,
       event_id: event.id,
       tournament_id: req.body.tournament_id || event.tournament_id || null,
-      positions: Array.isArray(req.body.positions) ? req.body.positions : [],
-      pole_driver_id: req.body.pole_driver_id || null,
-      fastest_lap_driver_id: req.body.fastest_lap_driver_id || null,
-      driver_of_the_day_id: req.body.driver_of_the_day_id || null,
+      positions: Array.isArray(req.body.positions)
+        ? req.body.positions
+        : (existing?.positions || []),
+      pole_driver_id: poleLocked
+        ? (existing?.pole_driver_id ?? null)
+        : requestedPole,
+      fastest_lap_driver_id: req.body.fastest_lap_driver_id ?? existing?.fastest_lap_driver_id ?? null,
+      driver_of_the_day_id: req.body.driver_of_the_day_id ?? existing?.driver_of_the_day_id ?? null,
       retirements_count:
-        typeof req.body.retirements_count === 'number' ? req.body.retirements_count : null,
+        typeof req.body.retirements_count === 'number'
+          ? req.body.retirements_count
+          : (existing?.retirements_count ?? null),
     };
 
-    let prediction = await F1Prediction.findOne({ where: { user_id: req.user.id, event_id: event.id } });
+    let prediction = existing;
     if (prediction) {
       await prediction.update(payload);
     } else {
       prediction = await F1Prediction.create(payload);
     }
 
-    res.json({ message: 'Predicción guardada', data: { prediction } });
+    res.json({
+      message: 'Predicción guardada',
+      data: {
+        prediction,
+        locks: { pole_locked: poleLocked, race_locked: raceLocked },
+      },
+    });
   } catch (error) {
     next(error);
   }
 };
 
-// Ranking de un evento (predicciones ya procesadas).
+// Ranking / clasificación del evento (todas las predicciones, ordenadas por puntos).
 exports.getEventLeaderboard = async (req, res, next) => {
   try {
     const predictions = await F1Prediction.findAll({
-      where: { event_id: req.params.eventId, is_processed: true },
-      include: [{ model: User, as: 'user', attributes: ['id', 'name', 'avatar'] }],
-      order: [['points_earned', 'DESC']],
+      where: { event_id: req.params.eventId },
+      attributes: [
+        'id', 'user_id', 'event_id', 'points_earned', 'points_breakdown',
+        'is_processed', 'created_at',
+      ],
+      include: [{ model: User, as: 'user', attributes: ['id', 'username', 'avatar'] }],
+      order: [['points_earned', 'DESC'], ['created_at', 'ASC']],
     });
     res.json({ data: { leaderboard: predictions } });
   } catch (error) {

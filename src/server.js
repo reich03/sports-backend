@@ -143,6 +143,24 @@ const startServer = async () => {
         }
       }
 
+      // Columna nueva en f1_events: cierre independiente de pole position
+      if (has('f1_events')) {
+        try {
+          const qi = sequelize.getQueryInterface();
+          const f1Cols = await qi.describeTable('f1_events');
+          if (f1Cols && !f1Cols.pole_lock_date) {
+            const { DataTypes } = require('sequelize');
+            await qi.addColumn('f1_events', 'pole_lock_date', {
+              type: DataTypes.DATE,
+              allowNull: true,
+            });
+            console.log('✅ Columna pole_lock_date añadida a f1_events.');
+          }
+        } catch (colErr) {
+          console.warn('⚠️  No se pudo verificar pole_lock_date:', colErr.message);
+        }
+      }
+
       // Seed: asegurar el deporte "Formula 1" para reutilizar el sistema de equipos/ligas.
       try {
         const { Sport } = require('./models');
