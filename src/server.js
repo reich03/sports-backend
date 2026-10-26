@@ -119,6 +119,7 @@ const startServer = async () => {
         F1EventDriver,
         F1EventResult,
         F1Prediction,
+        F1EventParticipant,
       } = require('./models');
 
       const tableName = (t) => (typeof t === 'string' ? t : t.tableName);
@@ -132,6 +133,7 @@ const startServer = async () => {
         { name: 'f1_event_drivers', model: F1EventDriver },
         { name: 'f1_event_results', model: F1EventResult },
         { name: 'f1_predictions', model: F1Prediction },
+        { name: 'f1_event_participants', model: F1EventParticipant },
       ];
 
       for (const t of newTables) {
@@ -148,16 +150,39 @@ const startServer = async () => {
         try {
           const qi = sequelize.getQueryInterface();
           const f1Cols = await qi.describeTable('f1_events');
+          const { DataTypes } = require('sequelize');
           if (f1Cols && !f1Cols.pole_lock_date) {
-            const { DataTypes } = require('sequelize');
             await qi.addColumn('f1_events', 'pole_lock_date', {
               type: DataTypes.DATE,
               allowNull: true,
             });
             console.log('✅ Columna pole_lock_date añadida a f1_events.');
           }
+          if (f1Cols && !f1Cols.type) {
+            await qi.addColumn('f1_events', 'type', {
+              type: DataTypes.STRING,
+              allowNull: false,
+              defaultValue: 'public',
+            });
+            console.log('✅ Columna type añadida a f1_events.');
+          }
+          if (f1Cols && !f1Cols.access_code) {
+            await qi.addColumn('f1_events', 'access_code', {
+              type: DataTypes.STRING(10),
+              allowNull: true,
+              unique: true,
+            });
+            console.log('✅ Columna access_code añadida a f1_events.');
+          }
+          if (f1Cols && !f1Cols.max_participants) {
+            await qi.addColumn('f1_events', 'max_participants', {
+              type: DataTypes.INTEGER,
+              allowNull: true,
+            });
+            console.log('✅ Columna max_participants añadida a f1_events.');
+          }
         } catch (colErr) {
-          console.warn('⚠️  No se pudo verificar pole_lock_date:', colErr.message);
+          console.warn('⚠️  No se pudo verificar columnas F1:', colErr.message);
         }
       }
 

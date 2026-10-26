@@ -56,6 +56,19 @@ const F1Event = sequelize.define('F1Event', {
     references: { model: 'tournaments', key: 'id' },
     onDelete: 'SET NULL',
   },
+  type: {
+    type: DataTypes.ENUM('public', 'private'),
+    defaultValue: 'public',
+  },
+  access_code: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    unique: true,
+  },
+  max_participants: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   grid_size: {
     type: DataTypes.INTEGER,
     defaultValue: 20, // F1 real; configurable 10..26

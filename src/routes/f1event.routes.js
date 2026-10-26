@@ -1,19 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const f1 = require('../controllers/f1event.controller');
-const { authenticateJWT } = require('../middlewares/auth.middleware');
+const { authenticateJWT, optionalAuth } = require('../middlewares/auth.middleware');
 const { isAdmin } = require('../middlewares/role.middleware');
 
 // ── Eventos F1 ────────────────────────────────────────────────────────────
-router.get('/', f1.getAllEvents);
-router.get('/:eventId', f1.getEventById);
+router.get('/', optionalAuth, f1.getAllEvents);
+router.post('/join-by-code', authenticateJWT, f1.joinByCode);
+router.get('/:eventId', optionalAuth, f1.getEventById);
 
 router.post('/', authenticateJWT, isAdmin, f1.createEvent);
 router.put('/:eventId', authenticateJWT, isAdmin, f1.updateEvent);
 router.delete('/:eventId', authenticateJWT, isAdmin, f1.deleteEvent);
 
+router.post('/:eventId/join', authenticateJWT, f1.joinEvent);
+
 // Parrilla
-router.get('/:eventId/drivers', f1.getEventDrivers);
+router.get('/:eventId/drivers', optionalAuth, f1.getEventDrivers);
 router.put('/:eventId/drivers', authenticateJWT, isAdmin, f1.setEventDrivers);
 
 // Resultado oficial (admin)

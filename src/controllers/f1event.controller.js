@@ -12,6 +12,18 @@ const {
   sequelize,
 } = require('../models');
 const { scorePrediction } = require('../services/f1Scoring.service');
+const {
+  getEventGridDriverIds,
+  validatePredictionGrid,
+  userCanAccessEvent,
+  joinEvent,
+  joinByCode,
+  ensurePrivateEventCode,
+  isAdminUser,
+  isUserJoined,
+} = require('../services/f1event.access.service');
+const { F1EventParticipant } = require('../models');
+const { Op } = require('sequelize');
 
 const EVENT_BASE_INCLUDE = [
   { model: Sport, as: 'sport' },
@@ -21,6 +33,34 @@ const EVENT_BASE_INCLUDE = [
 
 // ── EVENTOS ────────────────────────────────────────────────────────────────
 
+const decorateEventsForUser = async (events, user) => {
+  const admin = isAdminUser(user);
+  const eventIds = events.map((e) => e.id);
+  let joinedIds = new Set();
+
+  if (user && eventIds.length > 0) {
+    const parts = await F1EventParticipant.findAll({
+      where: { user_id: user.id, is_active: true, event_id: { [Op.in]: eventIds } },
+      attributes: ['event_id'],
+    });
+    joinedIds = new Set(parts.map((p) => p.event_id));
+  }
+
+  const visible = events.filter(
+    (e) => e.type === 'public' || admin || joinedIds.has(e.id),
+  );
+
+  return visible.map((e) => {
+    const json = e.toJSON();
+    const isJoined = e.type === 'public' || joinedIds.has(e.id) || admin;
+    return {
+      ...json,
+      is_joined: isJoined,
+      access_code: admin ? json.access_code : undefined,
+    };
+  });
+};
+
 exports.getAllEvents = async (req, res, next) => {
   try {
     const where = {};
@@ -29,13 +69,16 @@ exports.getAllEvents = async (req, res, next) => {
     if (req.query.league_id) where.league_id = req.query.league_id;
     if (req.query.tournament_id) where.tournament_id = req.query.tournament_id;
     if (req.query.status) where.status = req.query.status;
+    if (req.query.type) where.type = req.query.type;
 
     const events = await F1Event.findAll({
       where,
       include: EVENT_BASE_INCLUDE,
       order: [['event_date', 'ASC']],
     });
-    res.json({ data: { events } });
+
+    const decorated = await decorateEventsForUser(events, req.user);
+    res.json({ data: { events: decorated } });
   } catch (error) {
     next(error);
   }
@@ -64,17 +107,60 @@ exports.getEventById = async (req, res, next) => {
       ],
     });
     if (!event) return res.status(404).json({ error: { message: 'Evento no encontrado' } });
-    res.json({ data: { event } });
+
+    const canAccess = await userCanAccessEvent(event, req.user);
+    if (!canAccess) {
+      return res.status(403).json({
+        error: {
+          message: 'Evento privado. Debes unirte con el código de acceso.',
+          code: 'F1_EVENT_PRIVATE',
+        },
+      });
+    }
+
+    const json = event.toJSON();
+    json.is_joined = event.type === 'public' || isAdminUser(req.user)
+      || (req.user && await isUserJoined(event.id, req.user.id));
+    if (!isAdminUser(req.user)) delete json.access_code;
+
+    res.json({ data: { event: json } });
   } catch (error) {
     next(error);
   }
 };
 
+exports.joinEvent = async (req, res, next) => {
+  try {
+    const { access_code: accessCode } = req.body;
+    const result = await joinEvent(req.user.id, req.params.eventId, accessCode);
+    res.json({ message: 'Te uniste al evento F1', data: result });
+  } catch (error) {
+    res.status(400).json({ error: { message: error.message } });
+  }
+};
+
+exports.joinByCode = async (req, res, next) => {
+  try {
+    const { access_code: accessCode } = req.body;
+    if (!accessCode) {
+      return res.status(400).json({ error: { message: 'access_code es obligatorio' } });
+    }
+    const result = await joinByCode(req.user.id, accessCode);
+    res.json({ message: 'Te uniste al evento F1', data: result });
+  } catch (error) {
+    res.status(400).json({ error: { message: error.message } });
+  }
+};
+
 exports.createEvent = async (req, res, next) => {
   try {
-    const { drivers_ids, ...eventData } = req.body;
+    const { drivers_ids, ...rawEventData } = req.body;
+    const eventData = ensurePrivateEventCode(rawEventData);
     if (!eventData.name || !eventData.event_date || !eventData.season || !eventData.sport_id) {
       return res.status(400).json({ error: { message: 'name, season, event_date y sport_id son obligatorios' } });
+    }
+    if (eventData.type === 'private' && !eventData.access_code) {
+      return res.status(400).json({ error: { message: 'Los eventos privados requieren access_code' } });
     }
     const event = await F1Event.create(eventData);
     if (Array.isArray(drivers_ids) && drivers_ids.length > 0) {
@@ -93,7 +179,12 @@ exports.updateEvent = async (req, res, next) => {
   try {
     const event = await F1Event.findByPk(req.params.eventId);
     if (!event) return res.status(404).json({ error: { message: 'Evento no encontrado' } });
-    const { drivers_ids, ...eventData } = req.body;
+    const { drivers_ids, ...rawEventData } = req.body;
+    const eventData = ensurePrivateEventCode({
+      type: rawEventData.type ?? event.type,
+      access_code: rawEventData.access_code ?? event.access_code,
+      ...rawEventData,
+    });
     await event.update(eventData);
     if (Array.isArray(drivers_ids)) {
       await event.setDrivers(drivers_ids);
@@ -126,6 +217,13 @@ exports.getEventDrivers = async (req, res, next) => {
   try {
     const event = await F1Event.findByPk(req.params.eventId);
     if (!event) return res.status(404).json({ error: { message: 'Evento no encontrado' } });
+
+    const canAccess = await userCanAccessEvent(event, req.user);
+    if (!canAccess) {
+      return res.status(403).json({
+        error: { message: 'Evento privado. Debes unirte con el código de acceso.', code: 'F1_EVENT_PRIVATE' },
+      });
+    }
 
     const grid = await event.getDrivers({
       include: [{ model: Team, as: 'team' }],
@@ -281,9 +379,36 @@ exports.upsertMyPrediction = async (req, res, next) => {
       return res.status(400).json({ error: { message: 'Las predicciones para este evento ya están cerradas' } });
     }
 
+    const canAccess = await userCanAccessEvent(event, req.user);
+    if (!canAccess) {
+      return res.status(403).json({
+        error: { message: 'Evento privado. Debes unirte antes de predecir.', code: 'F1_EVENT_PRIVATE' },
+      });
+    }
+
     const existing = await F1Prediction.findOne({
       where: { user_id: req.user.id, event_id: event.id },
     });
+
+    const mergedPositions = Array.isArray(req.body.positions)
+      ? req.body.positions
+      : (existing?.positions || []);
+    const mergedPole = req.body.pole_driver_id ?? existing?.pole_driver_id ?? null;
+    const mergedFastest = req.body.fastest_lap_driver_id ?? existing?.fastest_lap_driver_id ?? null;
+    const mergedDotd = req.body.driver_of_the_day_id ?? existing?.driver_of_the_day_id ?? null;
+
+    const { driverIds: allowedDriverIds } = await getEventGridDriverIds(event.id);
+    const gridErrors = validatePredictionGrid({
+      positions: mergedPositions,
+      poleDriverId: mergedPole,
+      fastestLapDriverId: mergedFastest,
+      driverOfTheDayId: mergedDotd,
+      allowedDriverIds,
+      gridSize: event.grid_size || 20,
+    });
+    if (gridErrors.length > 0) {
+      return res.status(400).json({ error: { message: gridErrors[0], details: gridErrors } });
+    }
 
     const requestedPole = req.body.pole_driver_id || null;
     if (poleLocked && requestedPole && existing?.pole_driver_id && requestedPole !== existing.pole_driver_id) {

@@ -21,6 +21,7 @@ const F1Event = require('./F1Event');
 const F1EventDriver = require('./F1EventDriver');
 const F1EventResult = require('./F1EventResult');
 const F1Prediction = require('./F1Prediction');
+const F1EventParticipant = require('./F1EventParticipant');
 
 // ─── Sport associations ───────────────────────────────────────────
 Sport.hasMany(League, { foreignKey: 'sport_id', as: 'leagues' });
@@ -151,6 +152,11 @@ F1Prediction.belongsTo(Driver, { foreignKey: 'fastest_lap_driver_id', as: 'faste
 F1Prediction.belongsTo(Driver, { foreignKey: 'driver_of_the_day_id', as: 'driver_of_the_day' });
 User.hasMany(F1Prediction, { foreignKey: 'user_id', as: 'f1_predictions' });
 
+F1Event.hasMany(F1EventParticipant, { foreignKey: 'event_id', as: 'participants' });
+F1EventParticipant.belongsTo(F1Event, { foreignKey: 'event_id', as: 'event' });
+F1EventParticipant.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+User.hasMany(F1EventParticipant, { foreignKey: 'user_id', as: 'f1_event_participations' });
+
 module.exports = {
   sequelize,
   User,
@@ -172,5 +178,6 @@ module.exports = {
   F1Event,
   F1EventDriver,
   F1EventResult,
-  F1Prediction
+  F1Prediction,
+  F1EventParticipant,
 };
