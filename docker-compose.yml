@@ -43,8 +43,8 @@ services:
       - JWT_EXPIRE=7d
       - EMAIL_HOST=smtp.gmail.com
       - EMAIL_PORT=587
-      - EMAIL_USER=redjhojan0319@gmail.com
-      - EMAIL_PASSWORD=pzfi yrun ttte djbr
+      - EMAIL_USER=mastersports25v@gmail.com
+      - EMAIL_PASSWORD=cwgv vjsk ecba boje
       - EMAIL_FROM=noreply@mastersport.app
       - FRONTEND_URL=http://localhost:19006
     ports:
